@@ -1,0 +1,7 @@
+streamlit
+python-dotenv
+pydantic
+openai
+tavily-python
+requests
+trafilatura
