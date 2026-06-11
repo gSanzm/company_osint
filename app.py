@@ -1,5 +1,6 @@
 import streamlit as st
 
+from agents.source_ranker import rank_sources
 from agents.query_builder import build_company_queries
 from services.search import run_company_search
 
@@ -67,15 +68,76 @@ if st.button("Ejecutar búsqueda inicial", type="primary"):
             max_results_per_query=max_results_per_query,
         )
 
+        st.write("Source Ranker Agent: clasificando fuentes.")
+        ranked_sources = rank_sources(
+            results=results,
+            company_website=company_website,
+        )
+
         status.update(
             label="Búsqueda inicial completada",
             state="complete",
             expanded=False,
         )
 
-    tab_results, tab_queries, tab_raw = st.tabs(
-        ["Fuentes encontradas", "Queries generadas", "Debug"]
+    tab_ranked, tab_results, tab_queries, tab_raw = st.tabs(
+        ["Fuentes clasificadas", "Resultados brutos", "Queries generadas", "Debug"]
     )
+
+
+    with tab_ranked:
+        st.subheader("Fuentes clasificadas")
+
+        if not ranked_sources:
+            st.warning("No se han encontrado fuentes para clasificar.")
+        else:
+            source_groups = {
+                "official": "Fuentes oficiales",
+                "reviews": "Opiniones y reputación",
+                "news": "Noticias y medios",
+                "business_directory": "Directorios empresariales",
+                "social": "Redes sociales / perfiles",
+                "competitor": "Competidores / alternativas",
+                "seo_aggregator": "Agregadores SEO",
+                "unknown": "Sin clasificar",
+            }
+
+            for source_type, label in source_groups.items():
+                group = [
+                    source for source in ranked_sources
+                    if source.source_type == source_type
+                ]
+
+                if not group:
+                    continue
+
+                st.markdown(f"## {label}")
+                st.caption(f"{len(group)} fuente(s)")
+
+                for source in group:
+                    with st.container(border=True):
+                        st.markdown(f"### [{source.title}]({source.url})")
+
+                        col1, col2, col3 = st.columns([1, 1, 2])
+
+                        with col1:
+                            st.metric("Prioridad", source.priority)
+
+                        with col2:
+                            st.metric(
+                                "Score Tavily",
+                                round(source.score, 3) if source.score is not None else "N/A",
+                            )
+
+                        with col3:
+                            st.caption(source.reason)
+
+                        if source.content:
+                            st.write(source.content)
+
+                        st.caption(f"Query origen: {source.query}")
+
+
 
     with tab_results:
         st.subheader("Fuentes encontradas")
@@ -112,10 +174,14 @@ if st.button("Ejecutar búsqueda inicial", type="primary"):
                 st.code(query.query)
                 st.caption(query.purpose)
 
+
     with tab_raw:
         if show_debug:
             st.subheader("Resultados normalizados")
             st.json([result.model_dump(mode="json") for result in results])
+
+            st.subheader("Fuentes clasificadas")
+            st.json([source.model_dump(mode="json") for source in ranked_sources])
 
             st.subheader("Queries")
             st.json([query.model_dump() for query in queries])
